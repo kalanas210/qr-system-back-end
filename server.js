@@ -13,7 +13,19 @@ const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: 'https://qr-system-front-end.vercel.app',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'Origin', 'Accept'],
+}));
+// Explicitly handle OPTIONS preflight requests for all routes
+app.options('*', cors({
+  origin: 'https://qr-system-front-end.vercel.app',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Authorization', 'Content-Type', 'Origin', 'Accept'],
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
