@@ -873,6 +873,123 @@ router.post('/qrcodes/sticker-sheet', adminAuth, async (req, res) => {
   }
 });
 
+// Flexible sticker sheet PDF generation (custom paper size, copies per product, fixed multi-page bug)
+router.post('/qrcodes/flexible-sticker-sheet', adminAuth, async (req, res) => {
+  try {
+    const { qrIds, paperSize, copiesPerProduct = 2, margin = 40 } = req.body;
+    // paperSize: { width: inches, height: inches } or named preset (A4, A3, etc.)
+    if (!qrIds || !Array.isArray(qrIds) || qrIds.length === 0) {
+      return res.status(400).json({ message: 'No QR codes selected' });
+    }
+    // Paper size presets in inches
+    const paperPresets = {
+      A4: { width: 8.27, height: 11.69 },
+      A3: { width: 11.69, height: 16.54 },
+      A5: { width: 5.83, height: 8.27 },
+      '13x19': { width: 13, height: 19 },
+      '48roll': { width: 48, height: 13 }, // 48 inch wide roll, 13 inch tall
+    };
+    let pageWidthInch, pageHeightInch;
+    if (typeof paperSize === 'string' && paperPresets[paperSize]) {
+      pageWidthInch = paperPresets[paperSize].width;
+      pageHeightInch = paperPresets[paperSize].height;
+    } else if (paperSize && paperSize.width && paperSize.height) {
+      pageWidthInch = paperSize.width;
+      pageHeightInch = paperSize.height;
+    } else {
+      // Default to A4
+      pageWidthInch = paperPresets.A4.width;
+      pageHeightInch = paperPresets.A4.height;
+    }
+    const pageWidth = pageWidthInch * 72;
+    const pageHeight = pageHeightInch * 72;
+    const stickerSizePoints = 72; // 1 inch
+    const borderWidthPoints = 0.5;
+    const qrCodePaddingPoints = 4;
+    const serialNumberHeightPoints = 12;
+    const qrCodeSizePoints = Math.max(20, stickerSizePoints - (2 * qrCodePaddingPoints) - serialNumberHeightPoints);
+    // Calculate how many groups (copiesPerProduct) fit per row
+    const groupWidth = stickerSizePoints * copiesPerProduct;
+    const groupsPerRow = Math.floor((pageWidth - 2 * margin) / groupWidth);
+    const groupsPerColumn = Math.floor((pageHeight - 2 * margin) / stickerSizePoints);
+    const groupsPerPage = groupsPerRow * groupsPerColumn;
+    // Fetch QR codes
+    const qrcodes = await QRCodeModel.find({ _id: { $in: qrIds } });
+    if (qrcodes.length === 0) {
+      return res.status(404).json({ message: 'No QR codes found' });
+    }
+    const product = await Product.findOne({ productId: qrcodes[0].productId });
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    // Prepare PDF
+    const PDFDocument = (await import('pdfkit')).default || (await import('pdfkit'));
+    const QRCode = (await import('qrcode')).default || (await import('qrcode'));
+    const doc = new PDFDocument({ size: [pageWidth, pageHeight], layout: 'portrait' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="StickerSheet-${product.productName}.pdf"`);
+    doc.pipe(res);
+    // --- Pagination logic ---
+    // For each QR code, print copiesPerProduct stickers side by side as a group
+    // Fill each row with as many groups as fit, then go to next row
+    // When page is full, addPage and reset row/col
+    let groupIndex = 0; // index of the current group (each group = one QR code, multiple copies)
+    for (let i = 0; i < qrcodes.length; i++) {
+      // Calculate page, row, col for this group
+      const pageNum = Math.floor(groupIndex / groupsPerPage);
+      const pageGroupIndex = groupIndex % groupsPerPage;
+      const row = Math.floor(pageGroupIndex / groupsPerRow);
+      const col = pageGroupIndex % groupsPerRow;
+      if (groupIndex > 0 && pageGroupIndex === 0) {
+        doc.addPage();
+      }
+      // Top-left of this group
+      const groupStartX = margin + col * groupWidth;
+      const groupStartY = margin + row * stickerSizePoints;
+      // For each copy in the group
+      for (let copy = 0; copy < copiesPerProduct; copy++) {
+        const stickerX = groupStartX + copy * stickerSizePoints;
+        const stickerY = groupStartY;
+        // Draw border
+        doc.rect(stickerX, stickerY, stickerSizePoints, stickerSizePoints)
+          .lineWidth(borderWidthPoints)
+          .strokeColor('#000000')
+          .stroke();
+        // Draw QR code
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrcodes[i].serialNumber}`;
+        try {
+          const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
+          const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
+          const topMargin = 6;
+          const extraMargin = 2;
+          const qrStartX = stickerX + (stickerSizePoints - qrCodeSizePoints) / 2;
+          const qrStartY = stickerY + topMargin;
+          doc.image(qrImageBuffer, qrStartX, qrStartY, { width: qrCodeSizePoints, height: qrCodeSizePoints });
+          const serialNumberY = qrStartY + qrCodeSizePoints + extraMargin;
+          doc.fontSize(7)
+            .fillColor('#000000')
+            .text(qrcodes[i].serialNumber, stickerX, serialNumberY, { width: stickerSizePoints, align: 'center' });
+        } catch (qrError) {
+          // Draw placeholder if QR code fails
+          const qrStartX = stickerX + qrCodePaddingPoints;
+          const qrStartY = stickerY + qrCodePaddingPoints;
+          doc.fontSize(6)
+            .fillColor('#666666')
+            .text('QR Error', qrStartX, qrStartY + qrCodeSizePoints / 2 - 3, { width: qrCodeSizePoints, align: 'center' });
+          const serialNumberY = stickerY + stickerSizePoints - serialNumberHeightPoints - 2;
+          doc.fontSize(6)
+            .fillColor('#000000')
+            .text(qrcodes[i].serialNumber, stickerX, serialNumberY, { width: stickerSizePoints, align: 'center' });
+        }
+      }
+      groupIndex++;
+    }
+    doc.end();
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Category management
 router.get('/categories', adminAuth, async (req, res) => {
   try {
