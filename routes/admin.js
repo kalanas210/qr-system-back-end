@@ -406,10 +406,11 @@ router.post('/qrcodes/assign', adminAuth, async (req, res) => {
 });
 
 // Updated Download batch QR codes as PDF (A4 sticker layout, duplicate option)
-router.get('/qrcodes/download-pdf/:productId', adminAuth, async (req, res) => {
+router.get('/qrcodes/download-pdf/:productId',  async (req, res) => {
   try {
     const { productId } = req.params;
     const duplicate = req.query.duplicate === 'true';
+    console.log('duplicate', productId);
     let qrcodes = await QRCodeModel.find({ productId });
     // Remove duplicates by serialNumber
     const seen = new Set();
@@ -464,7 +465,7 @@ router.get('/qrcodes/download-pdf/:productId', adminAuth, async (req, res) => {
         const col = pagePairIndex % pairsPerRow;
         const pairStartX = margin + col * pairWidthPoints;
         const pairStartY = margin + row * pairHeightPoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrPairs[i].qrcode.serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrPairs[i].qrcode.serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
@@ -521,7 +522,7 @@ router.get('/qrcodes/download-pdf/:productId', adminAuth, async (req, res) => {
         const col = pageStickerIndex % stickersPerRow;
         const stickerX = margin + col * stickerSizePoints;
         const stickerY = margin + row * stickerSizePoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrcodes[i].serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrcodes[i].serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
@@ -619,7 +620,7 @@ router.post('/qrcodes/download-selected-pdf', adminAuth, async (req, res) => {
         const col = pagePairIndex % pairsPerRow;
         const pairStartX = margin + col * pairWidthPoints;
         const pairStartY = margin + row * pairHeightPoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrPairs[i].qrcode.serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrPairs[i].qrcode.serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
@@ -676,7 +677,7 @@ router.post('/qrcodes/download-selected-pdf', adminAuth, async (req, res) => {
         const col = pageStickerIndex % stickersPerRow;
         const stickerX = margin + col * stickerSizePoints;
         const stickerY = margin + row * stickerSizePoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrcodes[i].serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrcodes[i].serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
@@ -774,7 +775,7 @@ router.post('/qrcodes/sticker-sheet', adminAuth, async (req, res) => {
         const col = pagePairIndex % pairsPerRow;
         const pairStartX = margin + col * pairWidthPoints;
         const pairStartY = margin + row * pairHeightPoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrPairs[i].qrcode.serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrPairs[i].qrcode.serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
@@ -831,7 +832,7 @@ router.post('/qrcodes/sticker-sheet', adminAuth, async (req, res) => {
         const col = pageStickerIndex % stickersPerRow;
         const stickerX = margin + col * stickerSizePoints;
         const stickerY = margin + row * stickerSizePoints;
-        const qrUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/qr/${qrcodes[i].serialNumber}`;
+        const qrUrl = `${process.env.FRONTEND_URL}/qr/${qrcodes[i].serialNumber}`;
         try {
           const qrCodeDataUrl = await QRCode.toDataURL(qrUrl, { width: qrCodeSizePoints, margin: 0 });
           const qrImageBuffer = Buffer.from(qrCodeDataUrl.split(',')[1], 'base64');
