@@ -131,24 +131,29 @@ router.get('/shops', adminAuth, async (req, res) => {
 
 router.post('/shops', adminAuth, async (req, res) => {
   try {
-    const { shopName, ownerName, phoneNumber, password } = req.body;
-    
+    const { shopName, ownerName, phoneNumber, password, shopId: customShopId } = req.body;
     // Validate required fields
     if (!shopName || !ownerName || !phoneNumber || !password) {
       return res.status(400).json({ 
         message: 'All fields are required: shopName, ownerName, phoneNumber, password' 
       });
     }
-    
-    // Check if shop with same name already exists
-    const existingShop = await Shop.findOne({ shopName });
+    // Check if shop with same name or shopId already exists
+    const existingShop = await Shop.findOne({ $or: [ { shopName }, { shopId: customShopId } ] });
     if (existingShop) {
-      return res.status(400).json({ message: 'A shop with this name already exists' });
+      return res.status(400).json({ message: 'A shop with this name or ID already exists' });
     }
-    
-    const shopId = `SHOP${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    // Generate shopId: use custom if provided, else shopName + random
+    let shopId;
+    if (customShopId && customShopId.trim()) {
+      shopId = customShopId.trim();
+    } else {
+      // Sanitize shopName: lowercase, remove spaces, alphanum only
+      const base = shopName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const rand = Math.random().toString(36).substr(2, 4).toUpperCase();
+      shopId = `${base}_${rand}`;
+    }
     const hashedPassword = await bcrypt.hash(password, 10);
-    
     const shop = new Shop({
       shopId,
       shopName,
@@ -156,7 +161,6 @@ router.post('/shops', adminAuth, async (req, res) => {
       phoneNumber,
       password: hashedPassword
     });
-    
     await shop.save();
     console.log('Shop created successfully:', shop.shopId);
     res.status(201).json({ 
@@ -175,13 +179,14 @@ router.post('/shops', adminAuth, async (req, res) => {
 
 router.put('/shops/:id', adminAuth, async (req, res) => {
   try {
-    const { shopName, ownerName, phoneNumber, password } = req.body;
+    const { shopName, ownerName, phoneNumber, password, shopId: newShopId } = req.body;
     const updateData = { shopName, ownerName, phoneNumber };
-    
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);
     }
-    
+    if (newShopId && newShopId.trim()) {
+      updateData.shopId = newShopId.trim();
+    }
     const shop = await Shop.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('-password');
     res.json({ message: 'Shop updated successfully', shop });
   } catch (error) {
@@ -1086,6 +1091,27 @@ router.get('/shops/:shopId/qrcodes', adminAuth, async (req, res) => {
       product: products.find(p => p.productId === qr.productId) || null
     }));
     res.json(qrcodesWithProduct);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Toggle QR code activation (admin)
+router.post('/qrcodes/activate-toggle', adminAuth, async (req, res) => {
+  try {
+    const { qrId, activate } = req.body;
+    if (!qrId || typeof activate !== 'boolean') {
+      return res.status(400).json({ message: 'qrId and activate(boolean) required' });
+    }
+    const update = { isActivated: activate };
+    if (activate) {
+      update.activationDate = new Date();
+    } else {
+      update.activationDate = null;
+    }
+    const qr = await QRCodeModel.findByIdAndUpdate(qrId, update, { new: true });
+    if (!qr) return res.status(404).json({ message: 'QR code not found' });
+    res.json({ message: 'QR code updated', qr });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
